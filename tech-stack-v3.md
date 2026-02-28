@@ -1,9 +1,4 @@
 # 技術構成設計書 v3
-
-> v3変更点：**認証・DB を Supabase に移行**
-> v2からの差分：Cloud SQL・自前JWT・bcrypt・OAuth実装 → Supabase に置き換え
-> サークル開発（初心者〜中級混合・6〜8名）を前提とした現実解
-
 ---
 
 ## 1. 技術スタック全体像
@@ -25,7 +20,7 @@ flowchart TB
 
     subgraph SERVER["⚙️ サーバー層（Go）"]
         direction LR
-        API["Gin\nGo 1.22"]
+        API["Echo\nGo 1.22"]
         MW["ミドルウェア\nSupabase JWT検証\nRBAC / ABAC\nレートリミット"]
         WORKER["Goroutine Worker\nAI非同期処理\nチャネル通信"]
         API --> MW --> WORKER
@@ -67,39 +62,6 @@ flowchart TB
     style INFRA    fill:#e8f5e9,stroke:#4caf50
 ```
 
----
-
-## 2. v2 → v3 変更点まとめ
-
-```mermaid
-flowchart LR
-    subgraph V2["❌ v2（自前実装）"]
-        direction TB
-        V2A["Cloud SQL（別途GCP）\n月額 $7〜10"]
-        V2B["golang-jwt/jwt\n自前JWT発行"]
-        V2C["bcrypt\nパスワードハッシュ実装"]
-        V2D["golang.org/x/oauth2\nGoogle OAuth実装"]
-        V2E["Sprint1認証系\n約 30h の実装コスト"]
-    end
-
-    subgraph V3["✅ v3（Supabase）"]
-        direction TB
-        V3A["Supabase PostgreSQL\n無料枠 500MB\nCloud SQL不要"]
-        V3B["Supabase Auth\nJWT自動発行\nGoはVerifyのみ"]
-        V3C["Supabase Auth\nパスワード管理不要"]
-        V3D["Supabase Auth\nOAuthボタン数行で完成"]
-        V3E["Sprint1認証系\n約 8h に削減 🎉"]
-    end
-
-    V2A -->|"置き換え"| V3A
-    V2B -->|"置き換え"| V3B
-    V2C -->|"置き換え"| V3C
-    V2D -->|"置き換え"| V3D
-    V2E -->|"削減"| V3E
-
-    style V2 fill:#ffe0e0,stroke:#ff6b6b
-    style V3 fill:#d4edda,stroke:#16a34a
-```
 
 ---
 
@@ -110,7 +72,7 @@ sequenceDiagram
     actor User as 👤 ユーザー
     participant FE as 🖥️ Next.js
     participant SUPA as 🔷 Supabase Auth
-    participant GO as ⚙️ Go + Gin
+    participant GO as ⚙️ Go + Echo
     participant DB as 🗃️ Supabase DB
 
     Note over User, DB: メール/パスワード登録・ログイン
@@ -149,7 +111,7 @@ flowchart TB
 
         NEW["✅ v3 Supabase検証のみ\n・SupabaseのJWT_SECRETで署名検証\n・claims.Sub を user_id として使用\n・それ以外はSupabaseが全部やってくれる\n→ 約 2〜3h"]
 
-        CODE["// middleware/jwt.go\nfunc AuthMiddleware() gin.HandlerFunc {\n  return func(c *gin.Context) {\n    tokenStr := extractBearerToken(c)\n    \n    // Supabaseの公開鍵/シークレットで検証するだけ\n    token, err := jwt.Parse(tokenStr,\n      func(t *jwt.Token) (interface{}, error) {\n        return []byte(os.Getenv(\"SUPABASE_JWT_SECRET\")), nil\n      })\n    \n    if err != nil {\n      c.JSON(401, gin.H{\"error\": \"unauthorized\"})\n      c.Abort()\n      return\n    }\n    \n    claims := token.Claims.(jwt.MapClaims)\n    c.Set(\"user_id\", claims[\"sub\"]) // Supabaseのuser.id\n    c.Next()\n  }\n}"]
+        CODE["// middleware/jwt.go\nfunc AuthMiddleware() echo.MiddlewareFunc {\n  return func(next echo.HandlerFunc) echo.HandlerFunc {\n    return func(c echo.Context) error {\n      tokenStr := extractBearerToken(c)\n      \n      // Supabaseの公開鍵/シークレットで検証するだけ\n      token, err := jwt.Parse(tokenStr,\n        func(t *jwt.Token) (interface{}, error) {\n          return []byte(os.Getenv(\"SUPABASE_JWT_SECRET\")), nil\n        })\n      \n      if err != nil {\n        return c.JSON(401, map[string]string{\"error\": \"unauthorized\"})\n      }\n      \n      claims := token.Claims.(jwt.MapClaims)\n      c.Set(\"user_id\", claims[\"sub\"]) // Supabaseのuser.id\n      return next(c)\n    }\n  }\n}"]
     end
 
     OLD -.->|"Supabaseに置き換え"| NEW
@@ -325,9 +287,10 @@ flowchart TB
 mindmap
   root((📦 Go パッケージ v3))
     Webフレームワーク
-      gin-gonic/gin
+      labstack/echo
         高速HTTPルーター
         ミドルウェア対応
+        OpenAPIドキュメント自動生成
     認証・セキュリティ
       golang-jwt/jwt
         Supabase JWT検証のみ
@@ -376,7 +339,7 @@ mindmap
 sequenceDiagram
     actor User as 👤 ユーザー
     participant FE as 🖥️ Next.js
-    participant GO as ⚙️ Go + Gin
+    participant GO as ⚙️ Go + Echo
     participant CH as 📬 Job Channel
     participant WK as 🔧 Goroutine Worker
     participant SM as 🔑 Secret Manager
@@ -534,7 +497,7 @@ mindmap
       dnd-kit カンバンDnD
       @supabase/ssr 認証クライアント
     ⚙️ バックエンド Go
-      Go 1.22 + Gin
+      Go 1.22 + Echo
       golang-jwt JWT検証のみ
       crypto/aes AES-256
       sqlc 型安全クエリ生成
