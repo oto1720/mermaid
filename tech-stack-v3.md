@@ -290,7 +290,12 @@ mindmap
       labstack/echo
         高速HTTPルーター
         ミドルウェア対応
-        OpenAPIドキュメント自動生成
+      swaggo/swag
+        コメントからSwagger自動生成
+        swag init で openapi.json 出力
+      swaggo/echo-swagger
+        /swagger/* エンドポイント提供
+        Swagger UI をEchoに組み込み
     認証・セキュリティ
       golang-jwt/jwt
         Supabase JWT検証のみ
@@ -333,7 +338,50 @@ mindmap
 
 ---
 
-## 8. AI生成フロー（変更なし・Goroutine + SSE）
+## 8. Swagger（OpenAPI）設計
+
+```mermaid
+flowchart TB
+    subgraph SWAGGER["📄 Swagger / OpenAPI 構成"]
+        direction TB
+
+        subgraph SETUP["セットアップ"]
+            S1["swaggo/swag\nコメントアノテーションから\nopenapi.json を自動生成\n$ swag init -g cmd/server/main.go"]
+            S2["swaggo/echo-swagger\nEchoルーターに\nSwagger UIを組み込み\nGET /swagger/*"]
+            S1 --> S2
+        end
+
+        subgraph ANNOTATION["コメントアノテーション例"]
+            A1["// main.go\n// @title           Roadmap Dashboard API\n// @version         1.0\n// @description     サークル開発ロードマップ自動生成API\n// @host            localhost:8080\n// @BasePath        /api\n// @securityDefinitions.apikey BearerAuth\n// @in header\n// @name Authorization"]
+
+            A2["// handler/team.go\n// @Summary      チーム作成\n// @Description  新しいチームを作成しOWNERロールを付与\n// @Tags         teams\n// @Accept       json\n// @Produce      json\n// @Param        body body CreateTeamRequest true \"チーム情報\"\n// @Success      201  {object} TeamResponse\n// @Failure      400  {object} ErrorResponse\n// @Failure      401  {object} ErrorResponse\n// @Security     BearerAuth\n// @Router       /teams [post]"]
+        end
+
+        subgraph ROUTES["Swagger UIアクセス"]
+            R1["開発環境\nhttp://localhost:8080/swagger/index.html"]
+            R2["本番環境\n※ APP_ENV=production のとき\nSwagger UI を無効化推奨\n（機密情報漏洩防止）"]
+        end
+
+        subgraph FLOW["自動生成フロー"]
+            direction LR
+            F1["① Goハンドラーに\nコメント記述"]
+            F2["② $ swag init\ndocs/ フォルダに\nopenapi.json 生成"]
+            F3["③ echo-swagger が\n/swagger/* で\nSwagger UI を配信"]
+            F4["④ フロントチームが\nAPIドキュメントを参照\n手動同期不要"]
+            F1 --> F2 --> F3 --> F4
+        end
+    end
+
+    style SWAGGER    fill:#fef9c3,stroke:#eab308
+    style SETUP      fill:#fffbeb,stroke:#f59e0b
+    style ANNOTATION fill:#f8f9fa,stroke:#aaa
+    style ROUTES     fill:#dbeafe,stroke:#3b82f6
+    style FLOW       fill:#d4edda,stroke:#16a34a
+```
+
+---
+
+## 10. AI生成フロー（変更なし・Goroutine + SSE）
 
 ```mermaid
 sequenceDiagram
@@ -424,7 +472,7 @@ flowchart TB
 
 ---
 
-## 10. 環境変数設計（v3）
+## 11. 環境変数設計（v3）
 
 ```mermaid
 flowchart LR
@@ -454,7 +502,7 @@ flowchart LR
 
 ---
 
-## 11. Supabase 無料枠・コスト
+## 12. Supabase 無料枠・コスト
 
 ```mermaid
 flowchart TB
@@ -485,7 +533,7 @@ flowchart TB
 
 ---
 
-## 12. 技術選定サマリー（v3）
+## 13. 技術選定サマリー（v3）
 
 ```mermaid
 mindmap
@@ -498,6 +546,7 @@ mindmap
       @supabase/ssr 認証クライアント
     ⚙️ バックエンド Go
       Go 1.22 + Echo
+      swaggo/swag + echo-swagger Swagger UI
       golang-jwt JWT検証のみ
       crypto/aes AES-256
       sqlc 型安全クエリ生成
